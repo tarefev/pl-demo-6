@@ -202,12 +202,13 @@ function blockSummary(block) {
   const sec = block.section || 'defense';
   if (sec !== 'defense' || !(block.parts && block.parts.length)) {
     const titles = { verdict: 'Описание судебного акта', facts: 'Обстоятельства дела', admission: 'Позиция по приговору', law: 'Правовое обоснование' };
+    if (block.kind === 'grounds') return 'Основания для отмены/изменения приговора';
     return titles[sec] || 'Текстовый блок';
   }
   const line = state.card.lines.find(l => l.id === block.lineId) || null;
   const ep = line && line.episodeId ? state.card.episodes.findIndex(x => x.id === line.episodeId) : -1;
   const bits = [];
-  if (ep >= 0) bits.push(`Эпизод ${ep + 1}`);
+  if (ep >= 0) bits.push(cap(episodeShort(state.card.episodes[ep], ep)));
   bits.push(line ? `Линия: ${shortLineTitle(line.title)}` : 'Линия не привязана');
   if (line && line.thesis) bits.push(`Тезис: ${line.thesis.split('. ')[0].slice(0, 60)}${line.thesis.length > 60 ? '…' : ''}`);
   bits.push(`Доказательств: ${(block.evidence || []).length}`);
@@ -1241,49 +1242,44 @@ const PH_ACTION_TITLES = {
   'law-own': 'Правовое обоснование своими словами'
 };
 
-/** Рамка-плейсхолдер секции. По наведению показывает кнопки (CSS). */
+/** Подсказка на рамке-плейсхолдере: клик сразу вставляет блок. */
+const PH_HINT = {
+  verdict: 'Нажмите, чтобы вставить описание судебного акта',
+  facts: 'Нажмите, чтобы вставить описание обстоятельств дела',
+  admission: 'Нажмите, чтобы вставить позицию по приговору',
+  defense: 'Нажмите, чтобы добавить блок защитной части',
+  law: 'Нажмите, чтобы вставить правовое обоснование'
+};
+
+/** Рамка-плейсхолдер секции: клик по рамке сразу вставляет блок (без кнопок выбора). */
 function buildPlaceholder(ph) {
   const el = document.createElement('div');
-  el.className = 'doc-ph';
+  el.className = 'doc-ph doc-ph--click';
   el.dataset.kind = ph.kind;
-
-  let actionsHtml = '';
-  if (ph.kind === 'verdict') {
-    actionsHtml =
-      (state.card.verdict ? '<button data-act="verdict-card">Заполнить из карточки дела</button>' : '') +
-      '<button data-act="verdict-own">Заполнить своими словами</button>';
-  } else if (ph.kind === 'facts') {
-    actionsHtml =
-      (state.card.episodes.length ? '<button data-act="facts-card">Заполнить из карточки дела</button>' : '') +
-      '<button data-act="facts-verdict">Заполнить из приговора</button>' +
-      '<button data-act="facts-own">Заполнить своими словами</button>';
-  } else if (ph.kind === 'admission') {
-    actionsHtml = factsFilled()
-      ? '<button data-act="admission-fill">Заполнить по эпизодам</button>'
-      : '<span class="doc-ph__note">Сначала заполните обстоятельства дела</span>';
-  } else if (ph.kind === 'defense') {
-    actionsHtml = '<button data-act="defense-add">Добавить линию защиты</button>';
-  } else if (ph.kind === 'law') {
-    actionsHtml =
-      '<button data-act="law-auto">Подобрать нормы автоматически</button>' +
-      '<button data-act="law-own">Написать своими словами</button>';
-  }
-
   el.innerHTML = `
     <div class="doc-ph__title">${ph.title}</div>
-    <div class="doc-ph__actions">${actionsHtml}</div>`;
-
-  el.querySelectorAll('button[data-act]').forEach(btn =>
-    btn.addEventListener('click', () => onPlaceholderAction(btn.dataset.act)));
+    <div class="doc-ph__note">${PH_HINT[ph.kind] || 'Нажмите, чтобы вставить блок'} · правка с ИИ доступна после вставки</div>`;
+  el.addEventListener('click', () => onPlaceholderClick(ph.kind));
   return el;
 }
 
-/** Клик по кнопке плейсхолдера — фронтовое действие; поверх сценария спрашиваем «прервать?». */
-function onPlaceholderAction(act) {
+/** Первичное действие вставки для секции (без выбора — сразу блок). */
+function placeholderInsert(kind) {
+  switch (kind) {
+    case 'verdict': return runPlaceholderAction(state.card.verdict ? 'verdict-card' : 'verdict-own');
+    case 'facts': return runPlaceholderAction(state.card.episodes.length ? 'facts-card' : 'facts-own');
+    case 'admission': return runPlaceholderAction('admission-fill');
+    case 'law': return runPlaceholderAction('law-auto');
+    case 'defense': insertEmptyBlock(null, 'defense'); return;
+  }
+}
+
+/** Клик по рамке-плейсхолдеру: вставка блока; поверх сценария спрашиваем «прервать?». */
+function onPlaceholderClick(kind) {
   if (state.busy) return;
-  const run = () => runPlaceholderAction(act);
+  const run = () => placeholderInsert(kind);
   if (state.scenario) {
-    askInterrupt(PH_ACTION_TITLES[act] || 'Действие со структурой документа', run);
+    askInterrupt(`Вставка блока: ${(state.structure.find(p => p.kind === kind) || {}).title || kind}`, run);
     return;
   }
   run();
@@ -1291,16 +1287,20 @@ function onPlaceholderAction(act) {
 
 async function runPlaceholderAction(act) {
   switch (act) {
-    case 'verdict-card':
+    case 'verdict-card': {
       await think('Формирую описание приговора', 1500);
-      await insertSectionBlock('verdict', composeVerdictText(), { atStart: true, section: 'verdict', kind: 'verdict' });
-      addMessage('assistant', 'Описание приговора заполнено из карточки дела.');
+      const vId = await insertSectionBlock('verdict', composeVerdictText(), { atStart: true, section: 'verdict', kind: 'verdict' });
+      maybeInsertAppealGrounds(vId);
+      addMessage('assistant', 'Описание приговора заполнено из карточки дела' + (state.docType && state.docType.key === 'appeal' ? '; добавлен стандартный блок оснований для отмены/изменения приговора.' : '.'));
       break;
+    }
 
-    case 'verdict-own':
-      insertBlock('<span class="ph-mark">Опишите приговор первой инстанции</span>', { atStart: true, section: 'verdict', kind: 'verdict-own' });
+    case 'verdict-own': {
+      const vId = insertBlock('<span class="ph-mark">Опишите приговор первой инстанции</span>', { atStart: true, section: 'verdict', kind: 'verdict-own' });
+      maybeInsertAppealGrounds(vId);
       addMessage('assistant', 'Заполните описание приговора самостоятельно в документе.');
       break;
+    }
 
     case 'facts-card':
       state.factsSource = 'card';
@@ -1322,9 +1322,9 @@ async function runPlaceholderAction(act) {
       break;
 
     case 'admission-fill':
-      await think('Формирую позицию по вине по эпизодам', 1400);
-      insertBlock(composeAdmissionText(), { section: 'admission', kind: 'admission' });
-      addMessage('assistant', 'Позиция по вине заполнена.');
+      await think('Формирую позицию по приговору', 1400);
+      await insertSectionBlock('admission', composeAdmissionText(), { section: 'admission', kind: 'admission' });
+      addMessage('assistant', 'Позиция по приговору заполнена.');
       break;
 
     case 'defense-add':
@@ -1367,18 +1367,83 @@ async function maybeAutoAdmission({ silent, deferred } = {}) {
   return true;
 }
 
-/** Блок «Позиция по приговору»: несогласие с приговором + позиция по эпизодам. */
+/* ---------- Идентификация эпизодов (кратко и конкретно, без «эпизод N») ---------- */
+
+/** Суть/место эпизода без служебного «Эпизод N —» и без хвостовой квалификации в скобках. */
+function episodePlace(ep, i) {
+  let d = (ep.title || '').replace(/^Эпизод\s*\d+\s*[—:–-]\s*/i, '').trim();
+  d = d.replace(/\s*\([^()]*\)\s*$/, '').trim();
+  if (!d || /^из введённой фабулы/i.test(d)) {
+    const t = stripTags(ep.text || '').replace(/\s+/g, ' ').trim();
+    d = t ? t.split(/[.;]/)[0].slice(0, 70).trim() : '';
+  }
+  return d;
+}
+
+/** Развёрнутое «по факту совершения деяния…» для начала предложения (фабула). */
+function episodeFactRef(ep, i) {
+  const qual = ep.qualification || '';
+  const place = episodePlace(ep, i);
+  const base = qual
+    ? `по факту совершения деяния, предусмотренного ${qual}`
+    : `по факту совершения инкриминируемого деяния`;
+  return place ? `${base} (${place})` : base;
+}
+
+/** Родительный «деяния, предусмотренного …» — для встраивания в оборот (позиция). */
+function episodeDeedRef(ep, i) {
+  const qual = ep.qualification || '';
+  const place = episodePlace(ep, i);
+  const base = qual ? `деяния, предусмотренного ${qual}` : `инкриминируемого деяния`;
+  return place ? `${base} (${place})` : base;
+}
+
+/** Краткий идентификатор эпизода для сводки/чипа блока. */
+function episodeShort(ep, i) {
+  return episodePlace(ep, i) || (ep.qualification ? `по ${ep.qualification}` : `эпизод ${i + 1}`);
+}
+
+/** Классификация статуса признания по свободному тексту. */
+function admissionKind(admText) {
+  const s = (admText || '').toLowerCase();
+  if (!s.trim()) return 'unknown';
+  if (/частичн/.test(s)) return 'partial';
+  if (/не\s+призна|не\s+согла|не\s+винов/.test(s)) return 'deny';
+  if (/призна|винов/.test(s)) return 'full';
+  return 'unknown';
+}
+
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+/** Блок «Позиция по приговору»: несогласие по статусу признания, кратко. */
 function composeAdmissionText() {
   if (state.factsSource === 'own') {
-    return '<span class="ph-mark">Заполните позицию по приговору</span>';
+    return '<p><span class="ph-mark">Информация о признании отсутствует — введите позицию по приговору вручную.</span></p>';
   }
   const fromVerdict = state.factsSource === 'verdict';
-  const rows = state.card.episodes.map((ep, i) => {
-    const qual = ep.qualification || '<span class="ph-mark">указать квалификацию</span>';
-    const adm = ep.admission || (fromVerdict ? 'вину не признал' : '<span class="ph-mark">указать статус признания</span>');
-    return `по эпизоду ${i + 1} (${qual}) подзащитный ${adm}`;
-  }).join('; ');
-  return `С выводами суда первой инстанции сторона защиты не согласна: ${rows}. Изложенная в судебном заседании позиция подзащитного судом должным образом не оценена.`;
+  const eps = state.card.episodes;
+
+  // нет данных о признании ни в карточке дела, ни в приговоре — просим ввести вручную
+  const noData = !eps.length || eps.every(ep => !ep.admission);
+  if (noData && !fromVerdict) {
+    return '<p><span class="ph-mark">Информация о признании вины не найдена в карточке дела и в приговоре — введите позицию по приговору вручную.</span></p>';
+  }
+
+  const single = eps.length === 1;
+  const rows = eps.map((ep, i) => {
+    const deed = episodeDeedRef(ep, i);
+    switch (admissionKind(ep.admission || (fromVerdict ? 'вину не признал' : ''))) {
+      case 'full':
+        return `сторона защиты, не оспаривая решение суда и причастность подзащитного к совершению ${single ? 'преступления' : deed}, не согласна с квалификацией содеянного и справедливостью назначенного наказания`;
+      case 'partial':
+        return `сторона защиты не согласна с решением суда в части${single ? ' квалификации содеянного и назначенного наказания' : ', касающейся ' + deed}`;
+      case 'deny':
+        return `сторона защиты не согласна с решением суда${single ? '' : ' в отношении ' + deed}, полагая выводы о виновности не подтверждёнными совокупностью исследованных доказательств`;
+      default:
+        return `по эпизоду «${episodeShort(ep, i)}» <span class="ph-mark">статус признания не найден — укажите позицию вручную</span>`;
+    }
+  });
+  return `<p>${cap(rows.join('; '))}.</p>`;
 }
 
 /* ---------- Чеклист наполнения (строка состояния) ---------- */
@@ -1482,8 +1547,11 @@ const SRC_LABELS = {
 function defaultArgsList(line) {
   const pool = line.argumentsPool || [];
   if (!pool.length) {
-    const text = (line.argument || line.thesis || REGEN_FALLBACK_TEXT).replace(/\s+/g, ' ').trim();
-    return [{ text, source: 'fact', auto: true, poolIdx: null, grounds: [] }];
+    // осмысленный аргумент/тезис; заглушку REGEN_FALLBACK_TEXT в аргумент не подставляем —
+    // иначе новый (ручной) блок получает короткий шаблонный текст вместо реального
+    const raw = (line.argument && line.argument !== REGEN_FALLBACK_TEXT) ? line.argument : line.thesis;
+    const text = (raw || '').replace(/\s+/g, ' ').trim();
+    return text ? [{ text, source: 'fact', auto: true, poolIdx: null, grounds: [] }] : [];
   }
   return pool.slice(0, 2).map((a, i) => ({
     text: a.text, source: a.source, auto: true, poolIdx: i,
@@ -1514,7 +1582,7 @@ function blockLacksEvidence(block) {
 /** Короткая фактура дела для промтов. */
 function caseSummaryForPrompt() {
   const c = state.card;
-  const eps = c.episodes.map((e, i) => `Эпизод ${i + 1}: ${stripTags(e.text).replace(/\s+/g, ' ').slice(0, 260)} Позиция: ${e.admission || 'не указана'}.`).join('\n');
+  const eps = c.episodes.map((e, i) => `${cap(episodeFactRef(e, i))}: ${stripTags(e.text).replace(/\s+/g, ' ').slice(0, 260)} Позиция по признанию: ${e.admission || 'не указана'}.`).join('\n');
   return [
     c.client ? `Доверитель: ${c.client}.` : '',
     c.verdict ? `Судебный акт: приговор ${c.verdict.courtName} от ${c.verdict.date}, ${c.verdict.qualification}, наказание: ${c.verdict.sentence}.` : '',
@@ -1712,6 +1780,9 @@ function generateFromParts(parts) {
   const get = k => stripTags((parts.find(p => p.key === k) || {}).html || '').replace(/\.$/, '');
   const dot = s => s ? s + '.' : '';
   const args = get('arguments');
+  // нет ядра (аргументов) — не собираем шаблонный обрывок: пусть блок покажет
+  // плейсхолдер «Введите текст блока…», текст добавит пользователь или ИИ
+  if (!args) return '';
   const circ = get('circumstances');
   const ev = get('evidence');
   const norms = get('norms');
@@ -1820,6 +1891,30 @@ function composeVerdictText() {
   return parts.map(p => `<p>${p}</p>`).join('');
 }
 
+/**
+ * Стандартный блок оснований для отмены/изменения приговора (апелляция):
+ * требования к приговору + основания ст. 389.15 + позиция КС РФ и ст. 17, 14 УПК РФ.
+ * Текст фиксированный (шаблон), нейросетью не перегенерируется.
+ */
+const APPEAL_GROUNDS_PARAS = [
+  'В соответствии со ст.ст. 297, 302 УПК РФ приговор суда должен быть законным, обоснованным и справедливым, а обвинительный приговор постановляется лишь при условии, что в ходе судебного разбирательства виновность подсудимого в совершении преступления подтверждена совокупностью исследованных доказательств.',
+  'В соответствии со статьёй 389.15 УПК РФ основанием отмены или изменения судебного решения в апелляционном порядке является несоответствие выводов суда, изложенных в приговоре, фактическим обстоятельствам уголовного дела, установленным судом первой инстанции.',
+  'Приговор основан исключительно на доказательствах, полученных в ходе предварительного следствия, при этом доказательства, установленные в ходе судебного разбирательства, судом объективно не оценены, не учтены и обоснованно не опровергнуты, что указывает на обвинительный уклон суда при вынесении решения.',
+  'Как указал Конституционный Суд Российской Федерации в Определении от 8 апреля 2010 года № 601-О-О, в основу обвинительного приговора могут быть положены лишь доказательства, не вызывающие сомнения в их достоверности и допустимости. Обвинение может быть признано обоснованным только при условии, что все противостоящие ему обстоятельства дела объективно исследованы и опровергнуты стороной обвинения (Постановление Конституционного Суда Российской Федерации от 29.06.2004 года № 13-П).',
+  'В части первой статьи 17 УПК РФ в качестве принципа оценки доказательств закреплено адресованное судье требование не только исходить при такой оценке из своего внутреннего убеждения и совести, но и основываться на совокупности имеющихся в деле доказательств и руководствоваться законом. При этом правило о том, что никакие доказательства не имеют заранее установленной силы (часть вторая ст. 17 УПК РФ), раскрывая данный принцип, запрещает правоприменителю отдавать предпочтение тем или иным доказательствам на основании формальных критериев; неустранимые сомнения в виновности лица, возникающие при оценке доказательств, должны толковаться в пользу обвиняемого (часть 3 ст. 14 УПК РФ).'
+];
+
+function composeAppealGroundsText() {
+  return APPEAL_GROUNDS_PARAS.map(p => `<p>${p}</p>`).join('');
+}
+
+/** Вставляет стандартный блок оснований сразу после описания приговора (только апелляция, единожды). */
+function maybeInsertAppealGrounds(afterVerdictId) {
+  if (!state.docType || state.docType.key !== 'appeal') return;
+  if (state.blocks.some(b => b.kind === 'grounds')) return;
+  insertBlock(composeAppealGroundsText(), { afterId: afterVerdictId, section: 'verdict', kind: 'grounds' });
+}
+
 /** Спец-идентификатор шапки документа в контексте чата. */
 const HEADER_ID = '__header__';
 
@@ -1911,7 +2006,10 @@ function generateHeaderLines(type) {
     const court = c.court ? (type.key === 'appeal' ? c.court.appeal : c.court.cassation) : null;
     if (court) {
       // полные данные для шапки есть в карточке дела
-      const lines = [`В ${court.name}`, court.address, ''];
+      const lines = [`В ${court.name}`, court.address];
+      // жалоба подаётся через суд первой инстанции (ст. 389.3, 401.3 УПК РФ)
+      if (c.court.firstInstance) lines.push(`через ${c.court.firstInstance}`);
+      lines.push('');
       lines.push(advLine);
       if (c.advocateDetails) lines.push(c.advocateDetails);
       lines.push('');
@@ -1920,7 +2018,7 @@ function generateHeaderLines(type) {
       if (c.court.firstInstanceRef) lines.push(`(${c.court.firstInstanceRef})`);
       return lines;
     }
-    return [`В ${ph('вставить название суда ' + type.court)}`, advLine, cliLine];
+    return [`В суд ${type.court}`, `через ${ph('вставить суд первой инстанции')}`, '', advLine, cliLine];
   }
   return [advLine, cliLine];
 }
@@ -2979,7 +3077,9 @@ async function runGenByLines() {
   if (state.structure && state.structure.some(p => p.kind === 'verdict') && state.card.verdict
       && !state.blocks.some(b => (b.section || 'defense') === 'verdict')) {
     await think('Формирую описание приговора', 1400);
-    await insertSectionBlock('verdict', composeVerdictText(), { atStart: true, section: 'verdict', kind: 'verdict', deferred: true });
+    const vId = await insertSectionBlock('verdict', composeVerdictText(), { atStart: true, section: 'verdict', kind: 'verdict', deferred: true });
+    // стандартный блок оснований для отмены/изменения приговора (апелляция) — сразу после описания
+    maybeInsertAppealGrounds(vId);
   }
 
   // признание известно по карточке — заполняем автоматически (без отдельной отбивки)
@@ -3018,9 +3118,9 @@ function composeFactsText() {
   const client = c.clientDat || c.client;
   const intro = `По уголовному делу${caseRef} моему доверителю${client ? ' ' + client : ''} вменяются следующие деяния.`;
   const episodes = c.episodes.map((ep, i) => {
-    const text = ep.text.replace(/\s+/g, ' ').trim();
+    const text = stripTags(ep.text).replace(/\s+/g, ' ').trim();
     const sentences = text.split('. ');
-    return `По эпизоду ${i + 1}: ${sentences.slice(0, 2).join('. ')}${sentences.length > 1 ? '.' : ''}`;
+    return `${cap(episodeFactRef(ep, i))}: ${sentences.slice(0, 2).join('. ')}${sentences.length > 1 ? '.' : ''}`;
   }).join(' ');
   return `${intro} ${episodes}`;
 }
