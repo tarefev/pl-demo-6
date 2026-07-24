@@ -18,6 +18,19 @@ const LLM = {
   get url() { return localStorage.getItem('llm_url') || 'https://api.openai.com/v1/chat/completions'; },
   get model() { return localStorage.getItem('llm_model') || 'gpt-5-nano'; },
 
+  /**
+   * Реальный URL запроса: к «голому» хосту (или .../v1) дописываем путь
+   * /chat/completions, чтобы Endpoint можно было указывать коротко
+   * (напр. https://api.deepseek.com). Полный путь и кастомные прокси не трогаем.
+   */
+  get endpoint() {
+    const u = this.url.trim().replace(/\/+$/, '');
+    if (/\/(chat\/completions|completions|responses)$/.test(u)) return u; // уже полный путь
+    if (/\/v\d+$/.test(u)) return u + '/chat/completions';                // .../v1 → +/chat/completions
+    if (/^https?:\/\/[^/]+$/.test(u)) return u + '/v1/chat/completions';  // только хост
+    return u;                                                             // кастомный путь прокси
+  },
+
   save({ key, url, model }) {
     if (key !== undefined) localStorage.setItem('llm_key', key.trim());
     if (url !== undefined && url.trim()) localStorage.setItem('llm_url', url.trim());
@@ -50,8 +63,8 @@ const LLM = {
       body.max_tokens = maxTokens;
     }
 
-    console.log('[LLM] →', this.model, this.url, `prompt ${userPrompt.length} chars, limit ${maxTokens}`);
-    const r = await fetch(this.url, {
+    console.log('[LLM] →', this.model, this.endpoint, `prompt ${userPrompt.length} chars, limit ${maxTokens}`);
+    const r = await fetch(this.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -64,7 +77,10 @@ const LLM = {
       console.error('[LLM] HTTP', r.status, errText);
       let apiMsg = '';
       try { apiMsg = JSON.parse(errText).error.message.slice(0, 120); } catch {}
-      throw new Error(`HTTP ${r.status}${apiMsg ? ': ' + apiMsg : ''}`);
+      let hint = '';
+      if (r.status === 404) hint = ' — проверьте Endpoint (обычно .../v1/chat/completions) и название модели';
+      if (r.status === 401) hint = ' — проверьте API-ключ';
+      throw new Error(`HTTP ${r.status}${apiMsg ? ': ' + apiMsg : ''}${hint}`);
     }
     const j = await r.json();
     const choice = j.choices && j.choices[0];
