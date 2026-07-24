@@ -292,17 +292,32 @@ function buildGroundsEl(block, arg) {
 
   (arg.grounds || []).forEach((ground, gi) => {
     const row = document.createElement('div');
-    row.className = 'doc-ground';
+    row.className = 'doc-ground' + (ground.type === 'evidence' ? ' doc-ground--evidence' : '');
     row.draggable = true;
+    // под доказательством — поле «что и почему доказывает» (заполняет адвокат)
+    const provesHtml = ground.type === 'evidence'
+      ? `<div class="doc-ground__proves" contenteditable="true" data-ph="Что и почему доказывает это доказательство…">${ground.proves || ''}</div>`
+      : '';
     row.innerHTML = `
       <span class="doc-ground__type doc-ground__type--${ground.type}" title="Перетащить основание">${GROUND_LABELS[ground.type] || ground.type}</span>
       <span class="doc-ground__text" contenteditable="true">${ground.text}${ground.evidence ? ` <i class="doc-ground__ev">(${ground.evidence})</i>` : ''}</span>
-      <button class="doc-arg__del" title="Удалить основание" type="button">×</button>`;
+      <button class="doc-arg__del" title="Удалить основание" type="button">×</button>
+      ${provesHtml}`;
     const txt = row.querySelector('.doc-ground__text');
     txt.addEventListener('input', () => {
       ground.text = txt.innerText;
       markDirty(block, 'Аргументы и доводы', 'arguments');
     });
+    const provesEl = row.querySelector('.doc-ground__proves');
+    if (provesEl) {
+      provesEl.draggable = false;
+      provesEl.addEventListener('input', () => {
+        ground.proves = provesEl.innerText.trim();
+        markDirty(block, 'Аргументы и доводы', 'arguments');
+      });
+      // выделение текста в поле не должно инициировать перетаскивание основания
+      provesEl.addEventListener('dragstart', e => { e.preventDefault(); e.stopPropagation(); });
+    }
     row.querySelector('.doc-arg__del').addEventListener('click', e => {
       e.stopPropagation();
       arg.grounds.splice(gi, 1);
@@ -381,7 +396,7 @@ function buildGroundsEl(block, arg) {
       }
       if (type === 'norm') pickNormGround(block, texts => texts.forEach(t => push({ type: 'norm', text: t })));
       if (type === 'practice') pickPracticeGround(block, texts => texts.forEach(t => push({ type: 'practice', text: t })));
-      if (type === 'evidence') pickEvidenceGround(block, texts => texts.forEach(t => push({ type: 'evidence', text: t })));
+      if (type === 'evidence') pickEvidenceGround(block, items => items.forEach(it => push({ type: 'evidence', text: it.text, proves: it.proves || '' })));
       if (type === 'circumstance') pickCircumstanceGround(block, texts => texts.forEach(t => push({ type: 'circumstance', text: t })));
     });
   });
@@ -604,12 +619,13 @@ function pickEvidenceGround(block, onApply) {
     })),
     onApply: (selected, added) => {
       added.forEach(a => state.card.evidence.push(a.title));
-      const withProves = it => {
-        const desc = it.id !== null && it.id !== undefined ? state.card.evidence[it.id] : it.title;
-        return desc + (it.proves ? ` — доказывает: ${it.proves}` : '');
-      };
-      const texts = [...selected, ...added].map(withProves);
-      if (texts.length) onApply(texts);
+      // «что доказывает» — отдельным полем (в конструкторе под доказательством), не в текст
+      const toGround = it => ({
+        text: it.id !== null && it.id !== undefined ? state.card.evidence[it.id] : it.title,
+        proves: it.proves || ''
+      });
+      const grounds = [...selected, ...added].map(toGround);
+      if (grounds.length) onApply(grounds);
     }
   });
 }
@@ -1595,7 +1611,7 @@ function caseSummaryForPrompt() {
 function blockPromptVars(block) {
   const line = state.card.lines.find(l => l.id === block.lineId) || {};
   const args = (block.argsList || []).map((a, i) => {
-    const gr = (a.grounds || []).map(g => `  - ${GROUND_LABELS[g.type] || g.type}: ${stripTags(g.text)}`).join('\n');
+    const gr = (a.grounds || []).map(g => `  - ${GROUND_LABELS[g.type] || g.type}: ${stripTags(g.text)}${g.type === 'evidence' && g.proves ? ` (доказывает: ${stripTags(g.proves)})` : ''}`).join('\n');
     return `${i + 1}. ${a.text}${gr ? '\n' + gr : ''}`;
   }).join('\n');
 
@@ -1730,7 +1746,7 @@ function argsListToHtml(argsList) {
     if (!t) return '';
     if (ARGS_MODE === 'tree' && a.grounds && a.grounds.length) {
       t += ` Это подтверждается: ${a.grounds.map(g =>
-        `${g.text}${g.evidence ? ' (' + g.evidence + ')' : ''}`).filter(Boolean).join('; ')}.`;
+        `${g.text}${g.evidence ? ' (' + g.evidence + ')' : ''}${g.type === 'evidence' && g.proves ? ' — доказывает: ' + g.proves : ''}`).filter(Boolean).join('; ')}.`;
     }
     return t;
   }).filter(Boolean).join(' ');
