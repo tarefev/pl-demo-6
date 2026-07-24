@@ -2387,11 +2387,16 @@ async function routeText(text) {
   const trigger = matchTrigger(text);
   const sc = state.scenario;
 
-  // Сценарий не запущен (состояние C)
+  // Сценарий не запущен (состояние C): свободный ввод правит выбранную зону
   if (!sc) {
     if (trigger) return launchScenario(trigger);
     if (state.activeSubpart) return editSubpartWithAI(text);
     if (state.activeBlockId === HEADER_ID) return editHeaderWithAI(text);
+    // выбран блок целиком — свободный ввод редактирует его текст
+    if (state.activeBlockId) {
+      const block = getBlock(state.activeBlockId);
+      if (block) return onRewriteBlock(block, text);
+    }
     return onFreeInput(text);
   }
 
@@ -2476,8 +2481,8 @@ async function editSubpartWithAI(text) {
 }
 
 async function onFreeInput(text) {
-  await think('Обрабатываю запрос', 1400);
-  addMessage('assistant', '(Демо) Свободный ввод вне сценариев отвечает заглушкой. Наберите «справка» — покажу доступные команды.');
+  await think('Обрабатываю запрос', 1000);
+  addMessage('assistant', 'Чтобы отредактировать текст свободным вводом, выберите зону — блок, подблок или шапку (кликните по ней в документе), затем опишите правку. Команды доступны всегда: наберите «справка».');
 }
 
 /* ================= Сценарий №1: стартовый (выбор типа документа) ================= */
@@ -3416,6 +3421,18 @@ async function rewriteBlockAuto(block, mode) {
   addMessage('assistant', mode === 'shorter' ? 'Блок переписан короче.' : 'Блок переписан подробнее.');
 }
 
+/** Ручная правка без нейронки: сохраняем текст блока и дописываем учтённый запрос абзацем. */
+function applyManualBlockEdit(block, request, isCtor) {
+  const baseHtml = (isCtor ? (block.generated || '') : (block.html || '')).trim();
+  const isPlaceholder = !baseHtml || /gen-pending|Введите текст блока|ph-mark/i.test(baseHtml);
+  const req = request.replace(/\s+/g, ' ').trim();
+  const html = isPlaceholder
+    ? `<p>${cap(req).replace(/\.?$/, '.')}</p>`
+    : `${baseHtml}<p>Дополнительно учтено: ${req.charAt(0).toLowerCase()}${req.slice(1).replace(/\.?$/, '.')}</p>`;
+  if (isCtor) block.generated = html;
+  else { block.html = html; block.htmlBase = null; }
+}
+
 /** 16.6 — редактирование блока с ИИ по свободному запросу (предыдущий текст — в контексте). */
 async function onRewriteBlock(block, request) {
   const isCtor = !!(block.parts && block.parts.length);
@@ -3436,14 +3453,12 @@ async function onRewriteBlock(block, request) {
       if (isCtor) block.generated = html;
       else { block.html = html; block.htmlBase = null; }
     } catch (err) {
-      addMessage('assistant', `(ИИ недоступен: ${err.message} — применена шаблонная правка.)`);
-      if (isCtor) block.generated = REGEN_FALLBACK_TEXT.replace(/\s+/g, ' ').trim();
-      else { block.html = REGEN_FALLBACK_TEXT; block.htmlBase = null; }
+      addMessage('assistant', `(ИИ недоступен: ${err.message} — правка внесена без переформулирования.)`);
+      applyManualBlockEdit(block, request, isCtor);
     }
   } else {
-    await think('Редактирую блок согласно запросу', 1800);
-    if (isCtor) block.generated = REGEN_FALLBACK_TEXT.replace(/\s+/g, ' ').trim();
-    else { block.html = REGEN_FALLBACK_TEXT; block.htmlBase = null; }
+    await think('Вношу правку в текст блока', 1400);
+    applyManualBlockEdit(block, request, isCtor);
   }
 
   renderBlocks();
