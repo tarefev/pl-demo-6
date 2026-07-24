@@ -149,17 +149,16 @@ function buildBlockMeta(block) {
     if (blockLacksEvidence(block)) barBtns.push(['scroll-evidence', 'Не хватает доказательств', true, '']);
     barBtns.push(
       ['args-modal', argsCount ? 'Аргументы и доводы: ' + argsCount : 'Нет аргументов и доводов', !argsCount, ''],
-      ['practice-modal', 'Практика', false, ''],
-      ['rewrite', 'Редактировать с ИИ', false, '']
+      ['practice-modal', 'Практика', false, '']
     );
   } else if (isDefense && block.kind === 'manual') {
     // новый пустой блок: выбор линии активен (после выбора сменить нельзя — только удалить блок)
     barBtns = [
-      ['pick-line', 'Выбрать линию защиты', true, ''],
-      ['rewrite', 'Редактировать с ИИ', false, '']
+      ['pick-line', 'Выбрать линию защиты', true, '']
     ];
   } else {
-    barBtns = [['rewrite', 'Редактировать с ИИ', false, '']];
+    // у секций свободных кнопок нет — «Редактировать с ИИ» живёт пиктограммой в ряду
+    barBtns = [];
   }
 
   const rightHtml = isCtor ? `
@@ -1015,25 +1014,36 @@ function renderBlocks() {
     el.className = 'doc-block' + (block.id === state.activeBlockId ? ' is-active' : '');
     el.dataset.blockId = block.id;
 
-    // единственный столбец — действия (грип, статус, корзина, кнопки);
-    // информирование (номер, назначение) живёт в самом блоке текста
+    // единый столбец управления: галка слева, номер и назначение в столбце,
+    // «Редактировать с ИИ» — пиктограммой в ряду иконок
     const act = document.createElement('div');
     act.className = 'doc-act';
     act.contentEditable = 'false';
     act.innerHTML = `
       <div class="doc-act__row">
+        <span class="doc-block__status ${issuesOk ? 'is-done' : ''}"
+              title="${issuesOk ? 'Готово' : 'По сводке блока чего-то не хватает'}"></span>
         <span class="doc-block__grip" draggable="true" title="Перетащить блок">⋮⋮</span>
+        <span class="doc-block__num">${block.label}</span>
+        <button class="head-ic head-ic--ai" data-h="ai" title="Редактировать с ИИ">
+          <svg viewBox="0 0 24 24"><path d="M16.5 3.5a2.4 2.4 0 1 1 3.4 3.4L7 19.8 2.5 21l1.2-4.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="m19 13 .8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor"/></svg>
+        </button>
         ${isCtor ? `<button class="head-ic" data-h="toggle" title="${block.constructorDone ? 'Открыть конструктор' : 'Закрыть конструктор'}">
           <svg viewBox="0 0 24 24" style="transform: rotate(${block.constructorDone ? 0 : 180}deg)"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>` : ''}
         <button class="head-ic head-ic--del" data-h="delete" title="Удалить блок">
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12.1a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7m4 4v6m4-6v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <span class="doc-block__status ${issuesOk ? 'is-done' : ''}"
-              title="${issuesOk ? 'Готово' : 'По сводке блока чего-то не хватает'}"></span>
-      </div>`;
+      </div>
+      <div class="doc-act__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</div>`;
     act.appendChild(buildBlockMeta(block));
 
+    act.querySelector('[data-h="ai"]').addEventListener('click', e => {
+      e.stopPropagation();
+      setActiveBlock(block.id);
+      if (state.busy) return;
+      onStarAction({ id: 'rewrite', label: BLOCK_ACTION_LABELS['rewrite'], needsBlock: true });
+    });
     act.querySelector('[data-h="toggle"]')?.addEventListener('click', e => {
       e.stopPropagation();
       toggleConstructor(block);
@@ -1072,16 +1082,9 @@ function renderBlocks() {
       addMessage('assistant', `${dragged.label} перемещён.`);
     });
 
-    // тело блока: скобка со стороны столбца действий; информирование — первой строкой
+    // тело блока: скобка со стороны столбца управления
     const body = document.createElement('div');
     body.className = 'doc-block__body';
-    const caption = document.createElement('div');
-    caption.className = 'doc-block__caption';
-    caption.contentEditable = 'false';
-    caption.innerHTML = `
-      <span class="doc-block__num">${block.label}</span>
-      <span class="doc-caption__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</span>`;
-    body.appendChild(caption);
     el.appendChild(body);
     el.appendChild(act);
 
@@ -3777,7 +3780,7 @@ function applyCtrlSide(side) {
 }
 ctrlSideBtns.left.addEventListener('click', () => applyCtrlSide('left'));
 ctrlSideBtns.right.addEventListener('click', () => applyCtrlSide('right'));
-applyCtrlSide(localStorage.getItem('ctrl_side') === 'left' ? 'left' : 'right');
+applyCtrlSide(localStorage.getItem('ctrl_side') === 'right' ? 'right' : 'left');
 
 /* ================= Шапка ================= */
 

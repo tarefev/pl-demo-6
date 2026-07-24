@@ -429,26 +429,7 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
   box-shadow: inset 0 0 0 1px #cdd7fb;
 }
 
-/* --- Информирование внутри блока текста: номер + назначение первой строкой --- */
-.doc-block__caption {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 11px;
-  color: #5b6270;
-  margin-bottom: 5px;
-  cursor: default;
-  user-select: none;
-}
-.doc-caption__summary {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* --- Столбец действий (статус, удаление, кнопки) --- */
+/* --- Столбец управления (галка, номер, пиктограммы, назначение, кнопки) --- */
 .doc-act {
   flex: 0 0 var(--act-w);
   width: var(--act-w);
@@ -465,11 +446,23 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
 .doc-act__row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 5px;
 }
-/* ручка перетаскивания — у противоположного края строки действий */
-.doc-act__row .doc-block__grip { margin-right: auto; }
+/* галка и номер слева, пиктограммы справа; при колонке справа ряд зеркалится */
+.doc-act__row .doc-block__num { margin-right: auto; }
+body.ctrl-right .doc-act__row { flex-direction: row-reverse; }
+.doc-act__summary {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #5b6270;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+body.ctrl-right .doc-act__summary { text-align: right; }
+.head-ic--ai { color: var(--accent); }
+.head-ic--ai:hover { background: var(--accent-soft-2); }
 /* кнопки действий в столбце — вертикально, во всю ширину */
 .doc-act .doc-block__meta {
   margin-top: 2px;
@@ -1887,10 +1880,9 @@ body.text-only .doc-hint,
 body.text-only .doc-empty,
 body.text-only .page__add-image { display: none !important; }
 
-/* только текст: столбец действий, инфо-строка и скобки скрыты, текст на всю ширину */
+/* только текст: столбец управления и скобки скрыты, текст на всю ширину */
 body.text-only { --pad-l: 0px; --pad-r: 0px; }
-body.text-only .doc-act,
-body.text-only .doc-block__caption { display: none !important; }
+body.text-only .doc-act { display: none !important; }
 body.text-only .doc-block { padding: 8px 0; }
 body.text-only .doc-block__body { padding-left: 0 !important; padding-right: 0 !important; }
 body.text-only .doc-block__body::before { display: none; }
