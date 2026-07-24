@@ -13,16 +13,14 @@
   --danger: #e5484d;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(20, 24, 40, .07), 0 8px 24px rgba(20, 24, 40, .05);
-  /* два столбца у текста: информирование (номер, назначение) и действия (кнопки) */
-  --info-w: 150px;
+  /* столбец действий блока: ширина + зазор до текста */
   --act-w: 200px;
   --col-gap: 15px;
-  --info-col: calc(var(--info-w) + var(--col-gap));
   --act-col: calc(var(--act-w) + var(--col-gap));
 }
-/* сторона информирования переключается; действия — всегда напротив */
-body.ctrl-left { --pad-l: var(--info-col); --pad-r: var(--act-col); }
-body.ctrl-right { --pad-l: var(--act-col); --pad-r: var(--info-col); }
+/* сторона столбца действий переключается; информирование — в самом блоке текста */
+body.ctrl-left { --pad-l: var(--act-col); --pad-r: 0px; }
+body.ctrl-right { --pad-l: 0px; --pad-r: var(--act-col); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -234,8 +232,8 @@ button {
 }
 
 .page {
-  /* ширина текста прежняя (860) + столбцы по обе стороны */
-  max-width: calc(860px + var(--info-col) + var(--act-col));
+  /* ширина текста прежняя (860) + столбец действий сбоку */
+  max-width: calc(860px + var(--act-col));
   margin: 0 auto;
   position: relative;
   padding-top: 28px;
@@ -305,7 +303,7 @@ button {
   outline: none;
 }
 
-/* --- Блоки документа: [информирование] [текст со скобкой] [действия] --- */
+/* --- Блоки документа: [текст со скобкой] [столбец действий], без разделителей --- */
 .doc-block {
   position: relative;
   display: flex;
@@ -316,8 +314,8 @@ button {
   outline: none;
   cursor: text;
 }
-/* переключалка меняет стороны местами: инфо справа, действия слева */
-body.ctrl-right .doc-block { flex-direction: row-reverse; }
+/* переключалка: столбец действий слева от текста */
+body.ctrl-left .doc-block { flex-direction: row-reverse; }
 
 /* sticky-обёртка: метка и статус прилипают при скролле длинного блока */
 .doc-block__pin {
@@ -431,34 +429,23 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
   box-shadow: inset 0 0 0 1px #cdd7fb;
 }
 
-/* --- Столбец информирования (номер, назначение блока) --- */
-.doc-info {
-  flex: 0 0 var(--info-w);
-  width: var(--info-w);
-  position: sticky;
-  top: 8px;
-  align-self: flex-start;
+/* --- Информирование внутри блока текста: номер + назначение первой строкой --- */
+.doc-block__caption {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 0;
-  cursor: default;
-  font-size: 13px;
-}
-.doc-info__row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.doc-info__row .doc-block__num { flex: 1; text-align: center; }
-.doc-info__summary {
+  align-items: baseline;
+  gap: 8px;
   font-size: 11px;
-  line-height: 1.45;
   color: #5b6270;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
+  margin-bottom: 5px;
+  cursor: default;
+  user-select: none;
+}
+.doc-caption__summary {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Столбец действий (статус, удаление, кнопки) --- */
@@ -481,6 +468,8 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
   justify-content: flex-end;
   gap: 5px;
 }
+/* ручка перетаскивания — у противоположного края строки действий */
+.doc-act__row .doc-block__grip { margin-right: auto; }
 /* кнопки действий в столбце — вертикально, во всю ширину */
 .doc-act .doc-block__meta {
   margin-top: 2px;
@@ -1898,10 +1887,10 @@ body.text-only .doc-hint,
 body.text-only .doc-empty,
 body.text-only .page__add-image { display: none !important; }
 
-/* только текст: столбцы и скобки скрыты, текст на всю ширину */
+/* только текст: столбец действий, инфо-строка и скобки скрыты, текст на всю ширину */
 body.text-only { --pad-l: 0px; --pad-r: 0px; }
-body.text-only .doc-info,
-body.text-only .doc-act { display: none !important; }
+body.text-only .doc-act,
+body.text-only .doc-block__caption { display: none !important; }
 body.text-only .doc-block { padding: 8px 0; }
 body.text-only .doc-block__body { padding-left: 0 !important; padding-right: 0 !important; }
 body.text-only .doc-block__body::before { display: none; }

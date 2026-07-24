@@ -1015,23 +1015,14 @@ function renderBlocks() {
     el.className = 'doc-block' + (block.id === state.activeBlockId ? ' is-active' : '');
     el.dataset.blockId = block.id;
 
-    // информирование (номер, назначение) — с одной стороны текста,
-    // действия (статус, корзина, кнопки) — с другой; стороны меняются переключалкой
-    const info = document.createElement('div');
-    info.className = 'doc-info';
-    info.contentEditable = 'false';
-    info.innerHTML = `
-      <div class="doc-info__row">
-        <span class="doc-block__grip" draggable="true" title="Перетащить блок">⋮⋮</span>
-        <span class="doc-block__num">${block.label}</span>
-      </div>
-      <div class="doc-info__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</div>`;
-
+    // единственный столбец — действия (грип, статус, корзина, кнопки);
+    // информирование (номер, назначение) живёт в самом блоке текста
     const act = document.createElement('div');
     act.className = 'doc-act';
     act.contentEditable = 'false';
     act.innerHTML = `
       <div class="doc-act__row">
+        <span class="doc-block__grip" draggable="true" title="Перетащить блок">⋮⋮</span>
         ${isCtor ? `<button class="head-ic" data-h="toggle" title="${block.constructorDone ? 'Открыть конструктор' : 'Закрыть конструктор'}">
           <svg viewBox="0 0 24 24" style="transform: rotate(${block.constructorDone ? 0 : 180}deg)"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>` : ''}
@@ -1053,7 +1044,7 @@ function renderBlocks() {
     });
 
     // перетаскивание блока за ручку
-    const grip = info.querySelector('.doc-block__grip');
+    const grip = act.querySelector('.doc-block__grip');
     grip.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/block-id', block.id);
       e.dataTransfer.effectAllowed = 'move';
@@ -1081,10 +1072,16 @@ function renderBlocks() {
       addMessage('assistant', `${dragged.label} перемещён.`);
     });
 
-    // тело блока: скобка со стороны информирования связывает абзац с его столбцами
+    // тело блока: скобка со стороны столбца действий; информирование — первой строкой
     const body = document.createElement('div');
     body.className = 'doc-block__body';
-    el.appendChild(info);
+    const caption = document.createElement('div');
+    caption.className = 'doc-block__caption';
+    caption.contentEditable = 'false';
+    caption.innerHTML = `
+      <span class="doc-block__num">${block.label}</span>
+      <span class="doc-caption__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</span>`;
+    body.appendChild(caption);
     el.appendChild(body);
     el.appendChild(act);
 
@@ -3780,7 +3777,7 @@ function applyCtrlSide(side) {
 }
 ctrlSideBtns.left.addEventListener('click', () => applyCtrlSide('left'));
 ctrlSideBtns.right.addEventListener('click', () => applyCtrlSide('right'));
-applyCtrlSide(localStorage.getItem('ctrl_side') === 'right' ? 'right' : 'left');
+applyCtrlSide(localStorage.getItem('ctrl_side') === 'left' ? 'left' : 'right');
 
 /* ================= Шапка ================= */
 
