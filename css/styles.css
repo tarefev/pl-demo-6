@@ -13,14 +13,16 @@
   --danger: #e5484d;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(20, 24, 40, .07), 0 8px 24px rgba(20, 24, 40, .05);
-  /* столбец действий блока: ширина + зазор до текста */
+  /* три колонки: описание (номер, назначение) и управление (кнопки) по краям текста */
+  --info-w: 150px;
   --act-w: 200px;
   --col-gap: 15px;
+  --info-col: calc(var(--info-w) + var(--col-gap));
   --act-col: calc(var(--act-w) + var(--col-gap));
 }
-/* сторона столбца действий переключается; информирование — в самом блоке текста */
-body.ctrl-left { --pad-l: var(--act-col); --pad-r: 0px; }
-body.ctrl-right { --pad-l: 0px; --pad-r: var(--act-col); }
+/* дефолт: описание слева, кнопки справа (у чата); переключалка меняет их местами */
+body.ctrl-right { --pad-l: var(--info-col); --pad-r: var(--act-col); }
+body.ctrl-left { --pad-l: var(--act-col); --pad-r: var(--info-col); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -232,8 +234,8 @@ button {
 }
 
 .page {
-  /* ширина текста прежняя (860) + столбец действий сбоку */
-  max-width: calc(860px + var(--act-col));
+  /* ширина текста прежняя (860) + колонки описания и управления по краям */
+  max-width: calc(860px + var(--info-col) + var(--act-col));
   margin: 0 auto;
   position: relative;
   padding-top: 28px;
@@ -303,7 +305,7 @@ button {
   outline: none;
 }
 
-/* --- Блоки документа: [текст со скобкой] [столбец действий], без разделителей --- */
+/* --- Блоки документа: [описание] [текст со скобкой] [кнопки], без разделителей --- */
 .doc-block {
   position: relative;
   display: flex;
@@ -314,7 +316,7 @@ button {
   outline: none;
   cursor: text;
 }
-/* переключалка: столбец действий слева от текста */
+/* переключалка меняет края местами: кнопки слева, описание справа */
 body.ctrl-left .doc-block { flex-direction: row-reverse; }
 
 /* sticky-обёртка: метка и статус прилипают при скролле длинного блока */
@@ -344,7 +346,7 @@ body.ctrl-left .doc-block { flex-direction: row-reverse; }
 .doc-block:hover .doc-block__label,
 .doc-block.is-active .doc-block__label { opacity: 1; }
 
-/* тело блока: полоса-скобка со стороны столбца показывает, чей это абзац */
+/* тело блока: полоса-скобка со стороны описания показывает, чей это абзац */
 .doc-block__body {
   flex: 1;
   min-width: 0;
@@ -362,8 +364,9 @@ body.ctrl-left .doc-block { flex-direction: row-reverse; }
   background: var(--border-strong);
   transition: background .15s;
 }
-body.ctrl-right .doc-block__body { padding-left: 0; padding-right: 14px; }
-body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
+/* при переключении описание уходит вправо — скобка вместе с ним */
+body.ctrl-left .doc-block__body { padding-left: 0; padding-right: 14px; }
+body.ctrl-left .doc-block__body::before { left: auto; right: 0; }
 .doc-block:hover .doc-block__body::before { background: #aeb6c6; }
 .doc-block.is-active .doc-block__body::before { background: var(--accent); }
 .doc-block.is-active .doc-block__body { background: var(--accent-soft-2); border-radius: 6px; }
@@ -429,7 +432,41 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
   box-shadow: inset 0 0 0 1px #cdd7fb;
 }
 
-/* --- Столбец управления (галка, номер, пиктограммы, назначение, кнопки) --- */
+/* --- ЛЕВАЯ колонка: описание блока (галка, номер, назначение) --- */
+.doc-info {
+  flex: 0 0 var(--info-w);
+  width: var(--info-w);
+  position: sticky;
+  top: 8px;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  cursor: default;
+  font-size: 13px;
+}
+.doc-info__row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.doc-info__row .doc-block__num { flex: 1; }
+.doc-info__summary {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #5b6270;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.doc-info .doc-block__status {
+  position: static;
+  flex: none;
+}
+
+/* --- ПРАВАЯ колонка: управляющие кнопки --- */
 .doc-act {
   flex: 0 0 var(--act-w);
   width: var(--act-w);
@@ -448,19 +485,6 @@ body.ctrl-right .doc-block__body::before { left: auto; right: 0; }
   align-items: center;
   gap: 5px;
 }
-/* галка и номер слева, пиктограммы справа; при колонке справа ряд зеркалится */
-.doc-act__row .doc-block__num { margin-right: auto; }
-body.ctrl-right .doc-act__row { flex-direction: row-reverse; }
-.doc-act__summary {
-  font-size: 11px;
-  line-height: 1.45;
-  color: #5b6270;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-body.ctrl-right .doc-act__summary { text-align: right; }
 .head-ic--ai { color: var(--accent); }
 .head-ic--ai:hover { background: var(--accent-soft-2); }
 /* кнопки действий в столбце — вертикально, во всю ширину */
@@ -529,11 +553,6 @@ body.ctrl-right .doc-act__summary { text-align: right; }
 .head-ic:hover { background: #eef0f4; }
 .head-ic svg { width: 15px; height: 15px; transition: transform .15s; }
 .head-ic--del:hover { background: #fdf0f0; color: var(--danger); }
-.doc-act .doc-block__status {
-  position: static;
-  flex: none;
-  margin-left: 2px;
-}
 .doc-block.is-dragging { opacity: .45; }
 .doc-block.is-drop-target { box-shadow: inset 0 3px 0 var(--accent); }
 .doc-block__content { outline: none; }
@@ -1882,6 +1901,7 @@ body.text-only .page__add-image { display: none !important; }
 
 /* только текст: столбец управления и скобки скрыты, текст на всю ширину */
 body.text-only { --pad-l: 0px; --pad-r: 0px; }
+body.text-only .doc-info,
 body.text-only .doc-act { display: none !important; }
 body.text-only .doc-block { padding: 8px 0; }
 body.text-only .doc-block__body { padding-left: 0 !important; padding-right: 0 !important; }

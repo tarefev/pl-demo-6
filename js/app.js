@@ -1015,16 +1015,25 @@ function renderBlocks() {
     el.dataset.blockId = block.id;
 
     // единый столбец управления: галка слева, номер и назначение в столбце,
-    // «Редактировать с ИИ» — пиктограммой в ряду иконок
+    // ЛЕВАЯ колонка — описание блока: галка-статус, номер, назначение
+    const info = document.createElement('div');
+    info.className = 'doc-info';
+    info.contentEditable = 'false';
+    info.innerHTML = `
+      <div class="doc-info__row">
+        <span class="doc-block__status ${issuesOk ? 'is-done' : ''}"
+              title="${issuesOk ? 'Готово' : 'По сводке блока чего-то не хватает'}"></span>
+        <span class="doc-block__grip" draggable="true" title="Перетащить блок">⋮⋮</span>
+        <span class="doc-block__num">${block.label}</span>
+      </div>
+      <div class="doc-info__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</div>`;
+
+    // ПРАВАЯ колонка — управляющие кнопки: пиктограммы + кнопки действий
     const act = document.createElement('div');
     act.className = 'doc-act';
     act.contentEditable = 'false';
     act.innerHTML = `
       <div class="doc-act__row">
-        <span class="doc-block__status ${issuesOk ? 'is-done' : ''}"
-              title="${issuesOk ? 'Готово' : 'По сводке блока чего-то не хватает'}"></span>
-        <span class="doc-block__grip" draggable="true" title="Перетащить блок">⋮⋮</span>
-        <span class="doc-block__num">${block.label}</span>
         <button class="head-ic head-ic--ai" data-h="ai" title="Редактировать с ИИ">
           <svg viewBox="0 0 24 24"><path d="M16.5 3.5a2.4 2.4 0 1 1 3.4 3.4L7 19.8 2.5 21l1.2-4.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="m19 13 .8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor"/></svg>
         </button>
@@ -1034,8 +1043,7 @@ function renderBlocks() {
         <button class="head-ic head-ic--del" data-h="delete" title="Удалить блок">
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-.7 12.1a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7m4 4v6m4-6v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-      </div>
-      <div class="doc-act__summary" title="${blockSummary(block).replace(/"/g, '&quot;')}">${blockSummary(block)}</div>`;
+      </div>`;
     act.appendChild(buildBlockMeta(block));
 
     act.querySelector('[data-h="ai"]').addEventListener('click', e => {
@@ -1054,7 +1062,7 @@ function renderBlocks() {
     });
 
     // перетаскивание блока за ручку
-    const grip = act.querySelector('.doc-block__grip');
+    const grip = info.querySelector('.doc-block__grip');
     grip.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/block-id', block.id);
       e.dataTransfer.effectAllowed = 'move';
@@ -1082,9 +1090,10 @@ function renderBlocks() {
       addMessage('assistant', `${dragged.label} перемещён.`);
     });
 
-    // тело блока: скобка со стороны столбца управления
+    // три колонки: описание — текст — кнопки
     const body = document.createElement('div');
     body.className = 'doc-block__body';
+    el.appendChild(info);
     el.appendChild(body);
     el.appendChild(act);
 
@@ -3780,7 +3789,7 @@ function applyCtrlSide(side) {
 }
 ctrlSideBtns.left.addEventListener('click', () => applyCtrlSide('left'));
 ctrlSideBtns.right.addEventListener('click', () => applyCtrlSide('right'));
-applyCtrlSide(localStorage.getItem('ctrl_side') === 'right' ? 'right' : 'left');
+applyCtrlSide(localStorage.getItem('ctrl_side') === 'left' ? 'left' : 'right');
 
 /* ================= Шапка ================= */
 
